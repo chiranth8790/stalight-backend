@@ -14,6 +14,9 @@ class DbRoleMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
+        if request.path in ("/", "/health/", "/healthz/"):
+            return self.get_response(request)
+
         nested = connection.in_atomic_block  # only in tests, which wrap each test in a transaction
         with transaction.atomic():
             set_db_role("anon")

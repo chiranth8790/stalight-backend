@@ -37,4 +37,5 @@ __pycache__/
 # Django backend
 backend/.venv/
 backend/media/
+backend/staticfiles/
 .pytest_cache/

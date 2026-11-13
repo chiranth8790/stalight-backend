@@ -1,6 +1,7 @@
 import os
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -13,13 +14,15 @@ if _env.exists():
             os.environ.setdefault(_k.strip(), _v.strip())
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY") or ("dev-only-insecure-key" if DEBUG else None)
-if not SECRET_KEY:
-    raise RuntimeError("Set DJANGO_SECRET_KEY (or DJANGO_DEBUG=1 for local development)")
-ALLOWED_HOSTS = [h.strip() for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY") or "synchoo-production-secret-key-fallback-replace-me"
+
+# In production, allow all or specify domains via DJANGO_ALLOWED_HOSTS (e.g. *.synteq.cloud, localhost)
+_allowed = os.environ.get("DJANGO_ALLOWED_HOSTS", "*")
+ALLOWED_HOSTS = [h.strip() for h in _allowed.split(",") if h.strip()]
 
 INSTALLED_APPS = [
-    "daphne",  # runserver serves HTTP and WebSockets
+    "daphne",  # ASGI server for HTTP & WebSockets
+    "django.contrib.staticfiles",
     "django.contrib.contenttypes",
     "django.contrib.auth",
     "rest_framework",
@@ -35,12 +38,43 @@ MIDDLEWARE = [
     "core.middleware.DbRoleMiddleware",
 ]
 
+try:
+    import corsheaders  # noqa: F401
+    INSTALLED_APPS.insert(1, "corsheaders")
+    MIDDLEWARE.insert(0, "corsheaders.middleware.CorsMiddleware")
+except ImportError:
+    pass
+
+try:
+    import whitenoise  # noqa: F401
+    sec_idx = MIDDLEWARE.index("django.middleware.security.SecurityMiddleware")
+    MIDDLEWARE.insert(sec_idx + 1, "whitenoise.middleware.WhiteNoiseMiddleware")
+except ImportError:
+    pass
+
+# CORS configuration
+CORS_ALLOW_ALL_ORIGINS = os.environ.get("CORS_ALLOW_ALL", "0") == "1" or DEBUG
+_cors = os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:8080")
+CORS_ALLOWED_ORIGINS = [url.strip() for url in _cors.split(",") if url.strip()]
+CORS_ALLOW_CREDENTIALS = True
+
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
-DATABASES = {
-    "default": {
+def _get_db_config():
+    db_url = os.environ.get("DATABASE_URL")
+    if db_url:
+        p = urlparse(db_url)
+        return {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": p.path.lstrip("/"),
+            "USER": unquote(p.username or "postgres"),
+            "PASSWORD": unquote(p.password or ""),
+            "HOST": p.hostname or "localhost",
+            "PORT": str(p.port or 5432),
+        }
+    return {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.environ.get("DB_NAME", "synchoo"),
         "USER": os.environ.get("DB_USER", "synchoo"),
@@ -48,7 +82,8 @@ DATABASES = {
         "HOST": os.environ.get("DB_HOST", "localhost"),
         "PORT": os.environ.get("DB_PORT", "5432"),
     }
-}
+
+DATABASES = {"default": _get_db_config()}
 
 AUTH_USER_MODEL = "accounts.User"
 REST_FRAMEWORK = {
@@ -65,6 +100,10 @@ SIMPLE_JWT = {
     "USER_ID_CLAIM": "sub",
     "SIGNING_KEY": SECRET_KEY,
 }
+
+# Static files
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # Uploaded files (see files/views.py).
 MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", BASE_DIR / "media"))

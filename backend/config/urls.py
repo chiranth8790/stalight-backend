@@ -1,3 +1,4 @@
+from django.http import JsonResponse
 from django.urls import path
 
 from accounts import views as auth
@@ -5,7 +6,16 @@ from core import views as core
 from files import views as files
 from payments import views as payments
 
+
+def health_check(request):
+    return JsonResponse({"status": "ok", "app": "synchoo"})
+
+
 urlpatterns = [
+    # Health checks for cloud platforms (Synteq, Render, Railway, etc.)
+    path("", health_check),
+    path("health/", health_check),
+    path("healthz/", health_check),
     path("api/query/", core.query),
     path("api/rpc/<str:name>/", core.rpc),
     path("api/fn/<str:name>/", payments.call),
