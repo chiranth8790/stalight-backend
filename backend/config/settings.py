@@ -16,9 +16,14 @@ if _env.exists():
 DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY") or "synchoo-production-secret-key-fallback-replace-me"
 
-# In production, allow all or specify domains via DJANGO_ALLOWED_HOSTS (e.g. *.synteq.cloud, localhost)
+# Allow all hosts or read from DJANGO_ALLOWED_HOSTS
 _allowed = os.environ.get("DJANGO_ALLOWED_HOSTS", "*")
 ALLOWED_HOSTS = [h.strip() for h in _allowed.split(",") if h.strip()]
+if "*" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.extend([".ondigitalocean.app", "stalightride-smxmz.ondigitalocean.app", "localhost", "127.0.0.1"])
+
+# DigitalOcean proxy SSL header
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 INSTALLED_APPS = [
     "daphne",  # ASGI server for HTTP & WebSockets
